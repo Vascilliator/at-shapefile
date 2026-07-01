@@ -43,10 +43,20 @@ Das Repository enthält eine schlanke Start-App auf oberster Ebene (`at-shapefil
    python at-shapefile.py
    ```
 
-2. Optional können Sie den Standard-Export ohne GUI ausführen:
+2. Optional können Sie den Standard-Export ohne GUI ausführen. Dieser normale Export bleibt detailgetreu und wird nicht vereinfacht:
 
    ```.ps1
    python at-shapefile.py --cli
+   ```
+
+   Zusätzlich kann ein separater, vereinfachter Export für Qlik erzeugt werden. Der detailgetreue Standard-Export wird dabei weiterhin unverändert geschrieben; die Vereinfachung gilt nur für die Datei unter `--simplified-export-path`. Empfohlene Startwerte sind `--simplify-tolerance 50` für eine moderate Vereinfachung, `--simplify-tolerance 100` für eine stärkere Dateigrößenreduktion und `--coordinate-precision 6` für WGS84-GeoJSON-Ausgaben. Prüfen Sie die visuelle Qualität der vereinfachten Datei anschließend stichprobenartig in Qlik.
+
+   ```.ps1
+   python at-shapefile.py --cli `
+     --export-path output/at_postal_codes.geojson `
+     --simplified-export-path output/at_postal_codes.qlik.geojson `
+     --simplify-tolerance 50 `
+     --coordinate-precision 6
    ```
 
 3. Tragen Sie die Download-Adresse der Statistik-Austria-Gemeindegeometrien im Feld **Download-URL Gemeindegeometrien** ein. Das Feld ist mit der im Backend hinterlegten URL vorbelegt, kann aber überschrieben werden.
@@ -59,13 +69,15 @@ Das Repository enthält eine schlanke Start-App auf oberster Ebene (`at-shapefil
 
 6. Für **Qlik Geo Tools** wird der Export als **CSV mit WKT-Geometrie** empfohlen, da die Geometriespalte als WKT-Text weiterverarbeitet werden kann.
 
-7. Beispiel für eine Statistik-Austria-Gemeindegeometrie-URL:
+7. Wenn zusätzlich eine kleinere Datei für Qlik benötigt wird, aktivieren Sie **Zusätzlichen vereinfachten Qlik-Export erzeugen**. Wählen Sie anschließend unter **Vereinfachter Exportpfad** eine separate Zieldatei, damit der normale detailgetreue Export erhalten bleibt. Tragen Sie als Startwert bei **Vereinfachungstoleranz (Meter)** `50` für eine moderate Vereinfachung oder `100` für eine stärkere Dateigrößenreduktion ein. Für GeoJSON-Ausgaben in WGS84 ist bei **Koordinatenpräzision** der Wert `6` empfohlen. Prüfen Sie die visuelle Qualität der vereinfachten Qlik-Datei nach dem Export stichprobenartig in Qlik.
+
+8. Beispiel für eine Statistik-Austria-Gemeindegeometrie-URL:
 
    ```.text
    https://data.statistik.gv.at/data/OGDEXT_GEM_1_STATISTIK_AUSTRIA_20230101.zip
    ```
 
-8. Hinweis: Die bisher fest hinterlegte URL `OGDEXT_GEM_1_STATISTIK_AUSTRIA_20230101.zip` kann veraltet sein. Prüfen Sie auf der Statistik-Austria-Seite, ob eine aktuellere Gemeindegeometrie verfügbar ist, und ersetzen Sie die URL im Frontend bei Bedarf durch die aktuelle Download-URL.
+9. Hinweis: Die bisher fest hinterlegte URL `OGDEXT_GEM_1_STATISTIK_AUSTRIA_20230101.zip` kann veraltet sein. Prüfen Sie auf der Statistik-Austria-Seite, ob eine aktuellere Gemeindegeometrie verfügbar ist, und ersetzen Sie die URL im Frontend bei Bedarf durch die aktuelle Download-URL.
 
 ## See also
 
