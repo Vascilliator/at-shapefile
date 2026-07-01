@@ -4,6 +4,7 @@
 """Austrian shapefile creation and manipulation using GeoPandas."""
 
 from io import BytesIO
+import json
 from pathlib import Path
 import re
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -377,6 +378,96 @@ def simplify_geometries(geo_data, tolerance, preserve_topology=True):
     return working_data
 
 
+def _geojson_supports_coordinate_precision():
+    """Return whether GDAL advertises GeoJSON coordinate precision support."""
+    try:
+        from osgeo import ogr
+    except ImportError:
+        return False
+
+    driver = ogr.GetDriverByName("GeoJSON")
+    if driver is None:
+        return False
+
+    creation_options = driver.GetMetadataItem("DMD_CREATIONOPTIONLIST") or ""
+    return "COORDINATE_PRECISION" in creation_options
+
+
+def _round_coordinate_values(value, coordinate_precision):
+    """Recursively round numeric values inside a GeoJSON coordinates array."""
+    if isinstance(value, list):
+        return [
+            _round_coordinate_values(item, coordinate_precision) for item in value
+        ]
+
+    if isinstance(value, float):
+        return round(value, coordinate_precision)
+
+    return value
+
+
+def _round_geojson_coordinates(value, coordinate_precision):
+    """Recursively round only coordinate arrays in a decoded GeoJSON object."""
+    if isinstance(value, dict):
+        rounded_value = {}
+        for key, nested_value in value.items():
+            if key == "coordinates":
+                rounded_value[key] = _round_coordinate_values(
+                    nested_value, coordinate_precision
+                )
+            else:
+                rounded_value[key] = _round_geojson_coordinates(
+                    nested_value, coordinate_precision
+                )
+        return rounded_value
+
+    if isinstance(value, list):
+        return [
+            _round_geojson_coordinates(item, coordinate_precision) for item in value
+        ]
+
+    return value
+
+
+def _round_geojson_file_coordinates(output_path, coordinate_precision):
+    """Round coordinates in an already-written GeoJSON file in place."""
+    with Path(output_path).open(encoding="utf-8") as geojson_file:
+        geojson_data = json.load(geojson_file)
+
+    rounded_geojson_data = _round_geojson_coordinates(
+        geojson_data, coordinate_precision=coordinate_precision
+    )
+
+    with Path(output_path).open("w", encoding="utf-8") as geojson_file:
+        json.dump(rounded_geojson_data, geojson_file, ensure_ascii=False)
+        geojson_file.write("\n")
+
+
+def _write_geojson(export_data, output_path, coordinate_precision=None):
+    """Write GeoJSON, using GDAL precision support when available."""
+    if coordinate_precision is None:
+        export_data.to_file(output_path, driver="GeoJSON")
+        return
+
+    coordinate_precision = int(coordinate_precision)
+    if coordinate_precision < 0:
+        raise ValueError("coordinate_precision must be greater than or equal to zero")
+
+    if _geojson_supports_coordinate_precision():
+        try:
+            export_data.to_file(
+                output_path,
+                driver="GeoJSON",
+                COORDINATE_PRECISION=coordinate_precision,
+            )
+            return
+        except (TypeError, ValueError):
+            pass
+
+    export_data.to_file(output_path, driver="GeoJSON")
+    _round_geojson_file_coordinates(output_path, coordinate_precision)
+
+
 def export_postal_code_geometries(
     postal_code_geometries,
     output_path,
@@ -384,12 +475,15 @@ def export_postal_code_geometries(
     simplify_tolerance=None,
     simplified_export_path=None,
     preserve_topology=True,
+    coordinate_precision=None,
 ):
     """Export postal-code geometries as GeoJSON or CSV with WKT geometry.
 
     Exports are normalized to WGS84 (EPSG:4326) when the input GeoDataFrame
     has a different CRS. GeoJSON keeps the native geometry column; CSV exports
-    a WKT representation instead of the native geometry column.
+    a WKT representation instead of the native geometry column. Set
+    ``coordinate_precision`` to reduce GeoJSON coordinate decimals; 5 or 6
+    decimal places are useful starting points for WGS84 output.
     """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -400,7 +494,11 @@ def export_postal_code_geometries(
         export_data = export_data.to_crs(epsg=4326)
 
     if output_format in {"geojson", "json"}:
-        export_data.to_file(output_path, driver="GeoJSON")
+        _write_geojson(
+            export_data,
+            output_path=output_path,
+            coordinate_precision=coordinate_precision,
+        )
     elif output_format in {"csv", "wkt", "csv-wkt", "csv_wkt"}:
         csv_data = export_data.copy()
         csv_data["wkt"] = csv_data.geometry.to_wkt()
@@ -420,6 +518,7 @@ def export_postal_code_geometries(
             postal_code_geometries=simplified_data,
             output_path=simplified_path,
             output_format=simplified_format,
+            coordinate_precision=coordinate_precision,
         )
 
 
@@ -488,6 +587,7 @@ def build_and_export_postal_code_geometries(
     simplify_tolerance=None,
     simplified_export_path=None,
     preserve_topology=True,
+    coordinate_precision=None,
 ):
     """Build postal-code geometries and export them for UI/CLI callers."""
     def log(message):
@@ -526,6 +626,7 @@ def build_and_export_postal_code_geometries(
         simplify_tolerance=simplify_tolerance,
         simplified_export_path=simplified_export_path,
         preserve_topology=preserve_topology,
+        coordinate_precision=coordinate_precision,
     )
     log("Export abgeschlossen.")
     return postal_code_geometries
