@@ -294,6 +294,14 @@ def load_shapefile(
     )
 
 
+def build_postal_code_geometries(at_shapefile):
+    """Build postal-code-level geometries from the joined Austrian shapefile."""
+    return (
+        at_shapefile.filter(items=["postal_code", "geometry"])
+        .dissolve(by="postal_code", as_index=False, sort=True, dropna=True)
+    )
+
+
 def plot_shapefile_levels(at_shapefile):
     """Plot Austrian shapefile dissolves at state, municipality, and postal-code levels."""
     (
@@ -310,11 +318,7 @@ def plot_shapefile_levels(at_shapefile):
     )
     pyplot.show()
 
-    (
-        at_shapefile.filter(items=["postal_code", "geometry"])
-        .dissolve(by="postal_code", as_index=False, sort=True, dropna=True)
-        .plot()
-    )
+    build_postal_code_geometries(at_shapefile).plot()
     pyplot.show()
 
 
@@ -380,11 +384,14 @@ def build_at_shapefile(
         shapefile_layer=shapefile_layer,
     )
 
+    postal_code_geometries = None
     if export_path:
+        log("Building postal-code geometries...")
+        postal_code_geometries = build_postal_code_geometries(at_shapefile)
         export_label = export_format or Path(export_path).suffix.lstrip(".")
         log(f"Exporting {export_label} to {export_path}...")
         export_shapefile(
-            at_shapefile=at_shapefile,
+            at_shapefile=postal_code_geometries,
             export_path=export_path,
             export_format=export_format,
         )
@@ -394,6 +401,8 @@ def build_at_shapefile(
         log("Plotting shapefile levels...")
         plot_shapefile_levels(at_shapefile)
 
+    if postal_code_geometries is not None:
+        return postal_code_geometries
     return at_shapefile
 
 
