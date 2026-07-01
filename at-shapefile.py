@@ -3,7 +3,23 @@
 import argparse
 
 from subapps import backend
-from subapps.gui import main as start_gui
+
+
+def start_gui():
+    """Import and start the Tkinter GUI only when it is requested."""
+    try:
+        from subapps.gui import main as gui_main
+    except ModuleNotFoundError as exc:
+        if exc.name != "tkinter":
+            raise
+        raise SystemExit(
+            "Tkinter is not installed in this Python environment. "
+            "Install the Tkinter package for your Python distribution "
+            "(for example, 'python3-tk' on Debian/Ubuntu) or run "
+            "'python at-shapefile.py --cli' to use the command-line export."
+        ) from exc
+
+    gui_main()
 
 
 def main():
