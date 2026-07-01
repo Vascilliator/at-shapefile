@@ -29,6 +29,18 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 SHAPEFILE_DATA_DIR = PROJECT_ROOT / 'data' / 'raw' / 'OGDEXT_GEM_1_STATISTIK_AUSTRIA_20230101'
 
 
+def safe_extract(zip_file, target_dir):
+    """Extract a zip archive while preventing path traversal."""
+    target_dir = Path(target_dir).resolve()
+
+    for member in zip_file.infolist():
+        target_path = Path(target_dir, member.filename).resolve()
+        if target_path != target_dir and target_dir not in target_path.parents:
+            raise ValueError(f'Unsafe zip entry outside target directory: {member.filename}')
+
+    zip_file.extractall(path=target_dir)
+
+
 ##############
 # AT Shapefile
 ##############
@@ -244,7 +256,7 @@ with ZipFile(
     compression=ZIP_DEFLATED,
 ) as zip_file:
     SHAPEFILE_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    zip_file.extractall(path=SHAPEFILE_DATA_DIR)
+    safe_extract(zip_file=zip_file, target_dir=SHAPEFILE_DATA_DIR)
 
 # Delete objects
 del zip_file, ZIP_DEFLATED
