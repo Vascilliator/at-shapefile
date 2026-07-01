@@ -343,8 +343,47 @@ def plot_shapefile_levels(at_shapefile):
     pyplot.show()
 
 
+def simplify_geometries(geo_data, tolerance, preserve_topology=True):
+    """Return a copy of ``geo_data`` with simplified geometries.
+
+    Simplification is skipped unless ``tolerance`` is set to a value greater
+    than zero. When possible, geometries in geographic CRSs such as EPSG:4326
+    are temporarily projected to an estimated metric CRS before Shapely's
+    simplification is applied, so tolerances can be expressed in metres.
+    """
+    simplified_data = geo_data.copy()
+
+    if tolerance is None or tolerance <= 0:
+        return simplified_data
+
+    working_data = simplified_data
+    original_crs = simplified_data.crs
+    metric_crs = None
+
+    if original_crs is not None and original_crs.is_geographic:
+        metric_crs = simplified_data.estimate_utm_crs()
+        if metric_crs is not None:
+            working_data = simplified_data.to_crs(metric_crs)
+
+    working_data = working_data.copy()
+    working_data["geometry"] = working_data.geometry.simplify(
+        tolerance=tolerance,
+        preserve_topology=preserve_topology,
+    )
+
+    if metric_crs is not None and original_crs is not None:
+        working_data = working_data.to_crs(original_crs)
+
+    return working_data
+
+
 def export_postal_code_geometries(
-    postal_code_geometries, output_path, output_format=None
+    postal_code_geometries,
+    output_path,
+    output_format=None,
+    simplify_tolerance=None,
+    simplified_export_path=None,
+    preserve_topology=True,
 ):
     """Export postal-code geometries as GeoJSON or CSV with WKT geometry.
 
@@ -368,6 +407,20 @@ def export_postal_code_geometries(
         csv_data.drop(columns="geometry").to_csv(output_path, index=False)
     else:
         raise ValueError(f"Unsupported postal-code export format: {output_format}")
+
+    if simplified_export_path is not None:
+        simplified_path = Path(simplified_export_path)
+        simplified_format = simplified_path.suffix.lstrip(".").lower()
+        simplified_data = simplify_geometries(
+            postal_code_geometries,
+            tolerance=simplify_tolerance,
+            preserve_topology=preserve_topology,
+        )
+        export_postal_code_geometries(
+            postal_code_geometries=simplified_data,
+            output_path=simplified_path,
+            output_format=simplified_format,
+        )
 
 
 def export_shapefile(at_shapefile, export_path, export_format=None):
@@ -424,7 +477,6 @@ def build_at_shapefile(
     )
 
 
-
 def build_and_export_postal_code_geometries(
     shapefile_url=SHAPEFILE_ZIP_URL,
     shapefile_layer=SHAPEFILE_LAYER,
@@ -433,6 +485,9 @@ def build_and_export_postal_code_geometries(
     export_format=None,
     plot=False,
     log_callback=None,
+    simplify_tolerance=None,
+    simplified_export_path=None,
+    preserve_topology=True,
 ):
     """Build postal-code geometries and export them for UI/CLI callers."""
     def log(message):
@@ -468,6 +523,9 @@ def build_and_export_postal_code_geometries(
         postal_code_geometries=postal_code_geometries,
         output_path=output_path,
         output_format=export_format,
+        simplify_tolerance=simplify_tolerance,
+        simplified_export_path=simplified_export_path,
+        preserve_topology=preserve_topology,
     )
     log("Export abgeschlossen.")
     return postal_code_geometries
