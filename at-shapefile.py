@@ -225,12 +225,24 @@ def load_localities(political_districts):
     )
 
 
-def download_shapefile(target_dir=SHAPEFILE_DATA_DIR, url=SHAPEFILE_ZIP_URL):
+def get_shapefile_data_dir(shapefile_zip_url=SHAPEFILE_ZIP_URL):
+    """Return the default extraction directory for a shapefile download URL."""
+    shapefile_name = Path(shapefile_zip_url).name
+    if shapefile_name.lower().endswith(".zip"):
+        shapefile_name = shapefile_name[:-4]
+
+    return PROJECT_ROOT / "data" / "raw" / shapefile_name
+
+
+def download_shapefile(
+    shapefile_zip_url=SHAPEFILE_ZIP_URL, target_dir=SHAPEFILE_DATA_DIR
+):
     """Download and extract the Statistik Austria municipality shapefile."""
+    target_dir = Path(target_dir)
     with ZipFile(
         file=BytesIO(
             initial_bytes=requests.get(
-                url=url,
+                url=shapefile_zip_url,
                 headers=None,
                 timeout=5,
                 verify=True,
@@ -327,7 +339,7 @@ def export_shapefile(at_shapefile, export_path, export_format=None):
 def build_at_shapefile(
     shapefile_url=SHAPEFILE_ZIP_URL,
     shapefile_layer=SHAPEFILE_LAYER,
-    shapefile_dir=SHAPEFILE_DATA_DIR,
+    shapefile_dir=None,
     export_path=None,
     export_format=None,
     plot=False,
@@ -354,8 +366,12 @@ def build_at_shapefile(
     if not duplicate_localities.empty:
         log(f"Found {len(duplicate_localities)} duplicate locality postal-code rows.")
 
+    shapefile_dir = (
+        Path(shapefile_dir) if shapefile_dir else get_shapefile_data_dir(shapefile_url)
+    )
+
     log("Downloading and extracting municipality geometries...")
-    download_shapefile(target_dir=shapefile_dir, url=shapefile_url)
+    download_shapefile(shapefile_zip_url=shapefile_url, target_dir=shapefile_dir)
     log("Building joined shapefile data...")
     at_shapefile = load_shapefile(
         municipalities=municipalities,

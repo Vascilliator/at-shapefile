@@ -40,10 +40,15 @@ class AtShapefileGui(tk.Tk):
         self.title("AT Shapefile Export")
         self.geometry("780x520")
         self.columnconfigure(1, weight=1)
-        self.rowconfigure(5, weight=1)
+        self.rowconfigure(6, weight=1)
 
         self.url_var = tk.StringVar(value=self.backend.SHAPEFILE_ZIP_URL)
         self.layer_var = tk.StringVar(value=self.backend.SHAPEFILE_LAYER)
+        self.shapefile_dir_var = tk.StringVar(
+            value=str(
+                self.backend.get_shapefile_data_dir(self.backend.SHAPEFILE_ZIP_URL)
+            )
+        )
         self.export_var = tk.StringVar(
             value=str(PROJECT_ROOT / "data" / "processed" / "at_postal_codes.geojson")
         )
@@ -70,16 +75,26 @@ class AtShapefileGui(tk.Tk):
             row=1, column=1, columnspan=2, sticky="ew", **padding
         )
 
-        ttk.Label(self, text="Exportziel").grid(row=2, column=0, sticky="w", **padding)
-        ttk.Entry(self, textvariable=self.export_var).grid(
+        ttk.Label(self, text="Zielordner Gemeindegeometrien").grid(
+            row=2, column=0, sticky="w", **padding
+        )
+        ttk.Entry(self, textvariable=self.shapefile_dir_var).grid(
             row=2, column=1, sticky="ew", **padding
         )
+        ttk.Button(
+            self, text="Durchsuchen...", command=self._choose_shapefile_dir
+        ).grid(row=2, column=2, sticky="ew", **padding)
+
+        ttk.Label(self, text="Exportziel").grid(row=3, column=0, sticky="w", **padding)
+        ttk.Entry(self, textvariable=self.export_var).grid(
+            row=3, column=1, sticky="ew", **padding
+        )
         ttk.Button(self, text="Durchsuchen...", command=self._choose_export_path).grid(
-            row=2, column=2, sticky="ew", **padding
+            row=3, column=2, sticky="ew", **padding
         )
 
         ttk.Label(self, text="Exportformat").grid(
-            row=3, column=0, sticky="w", **padding
+            row=4, column=0, sticky="w", **padding
         )
         format_box = ttk.Combobox(
             self,
@@ -87,7 +102,7 @@ class AtShapefileGui(tk.Tk):
             values=list(EXPORT_FORMATS),
             state="readonly",
         )
-        format_box.grid(row=3, column=1, columnspan=2, sticky="ew", **padding)
+        format_box.grid(row=4, column=1, columnspan=2, sticky="ew", **padding)
         format_box.bind(
             "<<ComboboxSelected>>", lambda _event: self._sync_export_suffix()
         )
@@ -97,13 +112,21 @@ class AtShapefileGui(tk.Tk):
             text="PLZ-Flächen erzeugen",
             command=self._start_processing,
         )
-        self.process_button.grid(row=4, column=0, columnspan=3, sticky="ew", **padding)
+        self.process_button.grid(row=5, column=0, columnspan=3, sticky="ew", **padding)
 
         self.log_text = tk.Text(self, height=16, state="disabled", wrap="word")
-        self.log_text.grid(row=5, column=0, columnspan=3, sticky="nsew", **padding)
+        self.log_text.grid(row=6, column=0, columnspan=3, sticky="nsew", **padding)
         ttk.Label(self, textvariable=self.status_var).grid(
-            row=6, column=0, columnspan=3, sticky="w", **padding
+            row=7, column=0, columnspan=3, sticky="w", **padding
         )
+
+    def _choose_shapefile_dir(self):
+        path = filedialog.askdirectory(
+            title="Zielordner für Gemeindegeometrien auswählen",
+            initialdir=self.shapefile_dir_var.get() or str(PROJECT_ROOT),
+        )
+        if path:
+            self.shapefile_dir_var.set(path)
 
     def _choose_export_path(self):
         export_format, extension = EXPORT_FORMATS[self.format_var.get()]
@@ -145,14 +168,28 @@ class AtShapefileGui(tk.Tk):
 
         shapefile_url = self.url_var.get().strip()
         shapefile_layer = self.layer_var.get().strip()
+        shapefile_dir = self.shapefile_dir_var.get().strip()
         export_path = self.export_var.get().strip()
         export_format, _extension = EXPORT_FORMATS[self.format_var.get()]
 
-        if not shapefile_url or not shapefile_layer or not export_path:
+        if (
+            not shapefile_url
+            or not shapefile_layer
+            or not shapefile_dir
+            or not export_path
+        ):
             messagebox.showerror(
-                "Fehlende Eingabe", "Bitte URL, Layer-Name und Exportziel ausfüllen."
+                "Fehlende Eingabe",
+                "Bitte URL, Layer-Name, Zielordner und Exportziel ausfüllen.",
             )
             return
+
+        default_shapefile_dir = str(
+            self.backend.get_shapefile_data_dir(self.backend.SHAPEFILE_ZIP_URL)
+        )
+        if shapefile_dir == default_shapefile_dir:
+            shapefile_dir = str(self.backend.get_shapefile_data_dir(shapefile_url))
+            self.shapefile_dir_var.set(shapefile_dir)
 
         self.process_button.configure(state="disabled")
         self.status_var.set("Verarbeitung läuft...")
@@ -163,6 +200,7 @@ class AtShapefileGui(tk.Tk):
             kwargs={
                 "shapefile_url": shapefile_url,
                 "shapefile_layer": shapefile_layer,
+                "shapefile_dir": shapefile_dir,
                 "export_path": export_path,
                 "export_format": export_format,
             },
@@ -171,12 +209,13 @@ class AtShapefileGui(tk.Tk):
         self.worker.start()
 
     def _run_processing(
-        self, shapefile_url, shapefile_layer, export_path, export_format
+        self, shapefile_url, shapefile_layer, shapefile_dir, export_path, export_format
     ):
         try:
             self.backend.build_at_shapefile(
                 shapefile_url=shapefile_url,
                 shapefile_layer=shapefile_layer,
+                shapefile_dir=shapefile_dir,
                 export_path=export_path,
                 export_format=export_format,
                 plot=False,
