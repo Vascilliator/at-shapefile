@@ -23,7 +23,7 @@ Austrian shapefile - postal code level
 ### Python dependencies
 
 ```.ps1
-python -m pip install geopandas matplotlib numpy pandas requests xlrd
+python -m pip install -r requirements.txt
 ```
 
 ### R dependencies
@@ -35,31 +35,37 @@ install.packages(c("readxl", "sf", "tidyverse"))
 
 ### Grafische Bedienung (Frontend)
 
-Das Repository enthält zusätzlich ein Tkinter-Frontend, mit dem die PLZ-Flächen ohne direkte Anpassung des Python-Skripts erzeugt und exportiert werden können.
+Das Repository enthält eine schlanke Start-App auf oberster Ebene (`at-shapefile.py`). Die eigentliche GUI- und Backend-Logik liegt im Unterverzeichnis `subapps/`, damit Startpunkt, grafische Oberfläche und Verarbeitung getrennt bleiben.
 
 1. Installieren Sie zuerst die Python-Abhängigkeiten wie oben beschrieben. Starten Sie die grafische Oberfläche anschließend aus dem Repository-Verzeichnis mit:
 
    ```.ps1
-   python frontend.py
+   python at-shapefile.py
    ```
 
-2. Tragen Sie die Download-Adresse der Statistik-Austria-Gemeindegeometrien im Feld **Download-URL Gemeindegeometrien** ein. Das Feld ist mit der im Backend hinterlegten URL vorbelegt, kann aber überschrieben werden.
+2. Optional können Sie den Standard-Export ohne GUI ausführen:
 
-3. Geben Sie den passenden Shapefile-Layer im Feld **Layer-Name Gemeindegeometrien** an, falls die heruntergeladene ZIP-Datei einen anderen Layer-Namen verwendet. Der Layer-Name muss zum Namen der `.shp`-Datei im entpackten Statistik-Austria-Archiv passen, z. B. `STATISTIK_AUSTRIA_GEM_20230101` für das bisherige Archiv.
+   ```.ps1
+   python at-shapefile.py --cli
+   ```
 
-4. Wählen Sie unter **Exportformat** das gewünschte Ausgabeformat. Unterstützt werden:
+3. Tragen Sie die Download-Adresse der Statistik-Austria-Gemeindegeometrien im Feld **Download-URL Gemeindegeometrien** ein. Das Feld ist mit der im Backend hinterlegten URL vorbelegt, kann aber überschrieben werden.
+
+4. Geben Sie den passenden Shapefile-Layer im Feld **Layer-Name Gemeindegeometrien** an, falls die heruntergeladene ZIP-Datei einen anderen Layer-Namen verwendet. Der Layer-Name muss zum Namen der `.shp`-Datei im entpackten Statistik-Austria-Archiv passen, z. B. `STATISTIK_AUSTRIA_GEM_20230101` für das bisherige Archiv.
+
+5. Wählen Sie unter **Exportformat** das gewünschte Ausgabeformat. Unterstützt werden:
    - **GeoJSON (`.geojson`)**
    - **CSV mit WKT-Geometrie (`.csv`)**
 
-5. Für **Qlik Geo Tools** wird der Export als **CSV mit WKT-Geometrie** empfohlen, da die Geometriespalte als WKT-Text weiterverarbeitet werden kann.
+6. Für **Qlik Geo Tools** wird der Export als **CSV mit WKT-Geometrie** empfohlen, da die Geometriespalte als WKT-Text weiterverarbeitet werden kann.
 
-6. Beispiel für eine Statistik-Austria-Gemeindegeometrie-URL:
+7. Beispiel für eine Statistik-Austria-Gemeindegeometrie-URL:
 
    ```.text
    https://data.statistik.gv.at/data/OGDEXT_GEM_1_STATISTIK_AUSTRIA_20230101.zip
    ```
 
-7. Hinweis: Die bisher fest hinterlegte URL `OGDEXT_GEM_1_STATISTIK_AUSTRIA_20230101.zip` kann veraltet sein. Prüfen Sie auf der Statistik-Austria-Seite, ob eine aktuellere Gemeindegeometrie verfügbar ist, und ersetzen Sie die URL im Frontend bei Bedarf durch die aktuelle Download-URL.
+8. Hinweis: Die bisher fest hinterlegte URL `OGDEXT_GEM_1_STATISTIK_AUSTRIA_20230101.zip` kann veraltet sein. Prüfen Sie auf der Statistik-Austria-Seite, ob eine aktuellere Gemeindegeometrie verfügbar ist, und ersetzen Sie die URL im Frontend bei Bedarf durch die aktuelle Download-URL.
 
 ## See also
 
