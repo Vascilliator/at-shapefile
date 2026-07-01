@@ -11,9 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 BACKEND_PATH = PROJECT_ROOT / "at-shapefile.py"
 EXPORT_FORMATS = {
     "GeoJSON (.geojson)": ("geojson", ".geojson"),
-    "GeoPackage (.gpkg)": ("gpkg", ".gpkg"),
-    "ESRI Shapefile (.shp)": ("shp", ".shp"),
-    "CSV ohne Geometrie (.csv)": ("csv", ".csv"),
+    "CSV mit WKT (.csv)": ("csv", ".csv"),
 }
 
 
@@ -170,7 +168,7 @@ class AtShapefileGui(tk.Tk):
         shapefile_layer = self.layer_var.get().strip()
         shapefile_dir = self.shapefile_dir_var.get().strip()
         export_path = self.export_var.get().strip()
-        export_format, _extension = EXPORT_FORMATS[self.format_var.get()]
+        output_format, _extension = EXPORT_FORMATS[self.format_var.get()]
 
         if (
             not shapefile_url
@@ -202,14 +200,14 @@ class AtShapefileGui(tk.Tk):
                 "shapefile_layer": shapefile_layer,
                 "shapefile_dir": shapefile_dir,
                 "export_path": export_path,
-                "export_format": export_format,
+                "output_format": output_format,
             },
             daemon=True,
         )
         self.worker.start()
 
     def _run_processing(
-        self, shapefile_url, shapefile_layer, shapefile_dir, export_path, export_format
+        self, shapefile_url, shapefile_layer, shapefile_dir, export_path, output_format
     ):
         try:
             self.backend.build_at_shapefile(
@@ -217,7 +215,7 @@ class AtShapefileGui(tk.Tk):
                 shapefile_layer=shapefile_layer,
                 shapefile_dir=shapefile_dir,
                 export_path=export_path,
-                export_format=export_format,
+                export_format=output_format,
                 plot=False,
                 log_callback=self.log_queue.put,
             )

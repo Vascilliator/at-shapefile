@@ -322,20 +322,49 @@ def plot_shapefile_levels(at_shapefile):
     pyplot.show()
 
 
+def export_postal_code_geometries(
+    postal_code_geometries, output_path, output_format=None
+):
+    """Export postal-code geometries as GeoJSON or CSV with WKT geometry.
+
+    Exports are normalized to WGS84 (EPSG:4326) when the input GeoDataFrame
+    has a different CRS. GeoJSON keeps the native geometry column; CSV exports
+    a WKT representation instead of the native geometry column.
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_format = (output_format or output_path.suffix.lstrip(".")).lower()
+
+    export_data = postal_code_geometries.filter(items=["postal_code", "geometry"])
+    if export_data.crs is not None and export_data.crs.to_epsg() != 4326:
+        export_data = export_data.to_crs(epsg=4326)
+
+    if output_format in {"geojson", "json"}:
+        export_data.to_file(output_path, driver="GeoJSON")
+    elif output_format in {"csv", "wkt", "csv-wkt", "csv_wkt"}:
+        csv_data = export_data.copy()
+        csv_data["wkt"] = csv_data.geometry.to_wkt()
+        csv_data.drop(columns="geometry").to_csv(output_path, index=False)
+    else:
+        raise ValueError(f"Unsupported postal-code export format: {output_format}")
+
+
 def export_shapefile(at_shapefile, export_path, export_format=None):
     """Export the generated GeoDataFrame to the selected file format."""
     export_path = Path(export_path)
     export_path.parent.mkdir(parents=True, exist_ok=True)
     export_format = (export_format or export_path.suffix.lstrip(".")).lower()
 
-    if export_format in {"geojson", "json"}:
-        at_shapefile.to_file(export_path, driver="GeoJSON")
+    if export_format in {"geojson", "json", "csv", "wkt", "csv-wkt", "csv_wkt"}:
+        export_postal_code_geometries(
+            postal_code_geometries=at_shapefile,
+            output_path=export_path,
+            output_format=export_format,
+        )
     elif export_format in {"gpkg", "geopackage"}:
         at_shapefile.to_file(export_path, driver="GPKG")
     elif export_format in {"shp", "shapefile"}:
         at_shapefile.to_file(export_path, driver="ESRI Shapefile")
-    elif export_format == "csv":
-        at_shapefile.drop(columns="geometry").to_csv(export_path, index=False)
     else:
         raise ValueError(f"Unsupported export format: {export_format}")
 
@@ -390,10 +419,10 @@ def build_at_shapefile(
         postal_code_geometries = build_postal_code_geometries(at_shapefile)
         export_label = export_format or Path(export_path).suffix.lstrip(".")
         log(f"Exporting {export_label} to {export_path}...")
-        export_shapefile(
-            at_shapefile=postal_code_geometries,
-            export_path=export_path,
-            export_format=export_format,
+        export_postal_code_geometries(
+            postal_code_geometries=postal_code_geometries,
+            output_path=export_path,
+            output_format=export_format,
         )
         log("Export completed successfully.")
 
