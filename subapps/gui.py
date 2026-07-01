@@ -1,29 +1,17 @@
 """Tkinter GUI for building Austrian postal-code shapefiles."""
 
-from importlib import util
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Thread
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-BACKEND_PATH = PROJECT_ROOT / "at-shapefile.py"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EXPORT_FORMATS = {
     "GeoJSON (.geojson)": ("geojson", ".geojson"),
     "CSV mit WKT (.csv)": ("csv", ".csv"),
 }
-
-
-def load_backend():
-    """Load the hyphenated backend script as an importable module."""
-    spec = util.spec_from_file_location("at_shapefile_backend", BACKEND_PATH)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Cannot load backend from {BACKEND_PATH}")
-
-    module = util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+from subapps import backend
 
 
 class AtShapefileGui(tk.Tk):
@@ -31,7 +19,7 @@ class AtShapefileGui(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.backend = load_backend()
+        self.backend = backend
         self.log_queue = Queue()
         self.worker = None
 
@@ -210,7 +198,7 @@ class AtShapefileGui(tk.Tk):
         self, shapefile_url, shapefile_layer, shapefile_dir, export_path, output_format
     ):
         try:
-            self.backend.build_at_shapefile(
+            self.backend.build_and_export_postal_code_geometries(
                 shapefile_url=shapefile_url,
                 shapefile_layer=shapefile_layer,
                 shapefile_dir=shapefile_dir,
@@ -255,5 +243,10 @@ class AtShapefileGui(tk.Tk):
         self.log_text.configure(state="disabled")
 
 
-if __name__ == "__main__":
+def main():
+    """Start the graphical shapefile export app."""
     AtShapefileGui().mainloop()
+
+
+if __name__ == "__main__":
+    main()
