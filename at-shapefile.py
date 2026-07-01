@@ -225,6 +225,27 @@ def load_localities(political_districts):
     )
 
 
+def load_reference_data():
+    """Load all tabular reference data needed to build the shapefile.
+
+    Returns a dictionary with normalized postal codes, municipalities,
+    political districts, and localities. Keeping this in one place allows
+    callers to reuse the data-loading workflow without triggering geometry
+    downloads, plotting, or exports.
+    """
+    postal_codes = load_postal_codes()
+    municipalities = load_municipalities()
+    political_districts = load_political_districts()
+    localities = load_localities(political_districts)
+
+    return {
+        "postal_codes": postal_codes,
+        "municipalities": municipalities,
+        "political_districts": political_districts,
+        "localities": localities,
+    }
+
+
 def get_shapefile_data_dir(shapefile_zip_url=SHAPEFILE_ZIP_URL):
     """Return the default extraction directory for a shapefile download URL."""
     shapefile_name = Path(shapefile_zip_url).name
@@ -370,74 +391,52 @@ def export_shapefile(at_shapefile, export_path, export_format=None):
 
 
 def build_at_shapefile(
-    shapefile_url=SHAPEFILE_ZIP_URL,
+    shapefile_zip_url=SHAPEFILE_ZIP_URL,
     shapefile_layer=SHAPEFILE_LAYER,
-    shapefile_dir=None,
-    export_path=None,
-    export_format=None,
-    plot=False,
-    log_callback=None,
+    target_dir=None,
 ):
-    """Build Austrian postal-code areas and optionally export or plot the result."""
+    """Build the joined Austrian municipality/postal-code GeoDataFrame.
 
-    def log(message):
-        if log_callback is not None:
-            log_callback(message)
-
-    log("Loading postal codes...")
-    postal_codes = load_postal_codes()
-    log("Loading municipalities...")
-    municipalities = load_municipalities()
-    log("Loading political districts...")
-    political_districts = load_political_districts()
-    log("Loading localities...")
-    localities = load_localities(political_districts)
-
-    duplicate_localities = localities.loc[
-        localities.duplicated(subset=["postal_code"], keep=False)
-    ].sort_values(by=["postal_code"], ignore_index=True)
-    if not duplicate_localities.empty:
-        log(f"Found {len(duplicate_localities)} duplicate locality postal-code rows.")
-
+    This core builder intentionally has no GUI, plotting, or export side
+    effects. It loads reference data, ensures the municipality shapefile is
+    available locally, and returns the final joined municipality/postal-code
+    GeoDataFrame for callers to reuse.
+    """
+    reference_data = load_reference_data()
     shapefile_dir = (
-        Path(shapefile_dir) if shapefile_dir else get_shapefile_data_dir(shapefile_url)
+        Path(target_dir)
+        if target_dir is not None
+        else get_shapefile_data_dir(shapefile_zip_url)
     )
+    shapefile_path = shapefile_dir / f"{shapefile_layer}.shp"
 
-    log("Downloading and extracting municipality geometries...")
-    download_shapefile(shapefile_zip_url=shapefile_url, target_dir=shapefile_dir)
-    log("Building joined shapefile data...")
-    at_shapefile = load_shapefile(
-        municipalities=municipalities,
-        postal_codes=postal_codes,
+    if not shapefile_path.exists():
+        download_shapefile(
+            shapefile_zip_url=shapefile_zip_url,
+            target_dir=shapefile_dir,
+        )
+
+    return load_shapefile(
+        municipalities=reference_data["municipalities"],
+        postal_codes=reference_data["postal_codes"],
         shapefile_dir=shapefile_dir,
         shapefile_layer=shapefile_layer,
     )
 
-    postal_code_geometries = None
-    if export_path:
-        log("Building postal-code geometries...")
-        postal_code_geometries = build_postal_code_geometries(at_shapefile)
-        export_label = export_format or Path(export_path).suffix.lstrip(".")
-        log(f"Exporting {export_label} to {export_path}...")
-        export_postal_code_geometries(
-            postal_code_geometries=postal_code_geometries,
-            output_path=export_path,
-            output_format=export_format,
-        )
-        log("Export completed successfully.")
-
-    if plot:
-        log("Plotting shapefile levels...")
-        plot_shapefile_levels(at_shapefile)
-
-    if postal_code_geometries is not None:
-        return postal_code_geometries
-    return at_shapefile
-
 
 def main():
-    """Build and plot Austrian shapefile data."""
-    build_at_shapefile(plot=True, log_callback=print)
+    """CLI/demo entry point for building and exporting Austrian PLZ areas."""
+    at_shapefile = build_at_shapefile(
+        shapefile_zip_url=SHAPEFILE_ZIP_URL,
+        shapefile_layer=SHAPEFILE_LAYER,
+        target_dir=get_shapefile_data_dir(SHAPEFILE_ZIP_URL),
+    )
+    postal_code_geometries = build_postal_code_geometries(at_shapefile)
+    export_postal_code_geometries(
+        postal_code_geometries=postal_code_geometries,
+        output_path=PROJECT_ROOT / "data" / "processed" / "at-postal-codes.geojson",
+        output_format="geojson",
+    )
 
 
 if __name__ == "__main__":
