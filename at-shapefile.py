@@ -13,14 +13,21 @@ from matplotlib import pyplot
 import pandas as pd
 import requests
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent
-SHAPEFILE_DATA_DIR = PROJECT_ROOT / "data" / "raw" / "OGDEXT_GEM_1_STATISTIK_AUSTRIA_20230101"
+SHAPEFILE_DATA_DIR = (
+    PROJECT_ROOT / "data" / "raw" / "OGDEXT_GEM_1_STATISTIK_AUSTRIA_20230101"
+)
 POSTLEXIKON_URL = "https://www.post.at/g/c/postlexikon"
-MUNICIPALITIES_URL = "https://www.statistik.at/verzeichnis/reglisten/gemliste_knz_en.csv"
-POLITICAL_DISTRICTS_URL = "http://www.statistik.at/verzeichnis/reglisten/polbezirke_en.csv"
+MUNICIPALITIES_URL = (
+    "https://www.statistik.at/verzeichnis/reglisten/gemliste_knz_en.csv"
+)
+POLITICAL_DISTRICTS_URL = (
+    "http://www.statistik.at/verzeichnis/reglisten/polbezirke_en.csv"
+)
 LOCALITIES_URL = "http://www.statistik.at/verzeichnis/reglisten/ortsliste.csv"
-SHAPEFILE_ZIP_URL = "https://data.statistik.gv.at/data/OGDEXT_GEM_1_STATISTIK_AUSTRIA_20230101.zip"
+SHAPEFILE_ZIP_URL = (
+    "https://data.statistik.gv.at/data/OGDEXT_GEM_1_STATISTIK_AUSTRIA_20230101.zip"
+)
 SHAPEFILE_LAYER = "STATISTIK_AUSTRIA_GEM_20230101"
 
 AUSTRIAN_STATES_MAPPING = {
@@ -42,7 +49,9 @@ def safe_extract(zip_file, target_dir):
     for member in zip_file.infolist():
         target_path = Path(target_dir, member.filename).resolve()
         if target_path != target_dir and target_dir not in target_path.parents:
-            raise ValueError(f"Unsafe zip entry outside target directory: {member.filename}")
+            raise ValueError(
+                f"Unsafe zip entry outside target directory: {member.filename}"
+            )
 
     zip_file.extractall(path=target_dir)
 
@@ -57,7 +66,9 @@ def get_latest_postal_code_url():
     ).content.decode("utf-8")
 
     plz_verzeichnis = [
-        line for line in page_source.split(sep="\n") if 'title="PLZ Verzeichnis"' in line
+        line
+        for line in page_source.split(sep="\n")
+        if 'title="PLZ Verzeichnis"' in line
     ][0]
     return re.sub(
         pattern=r"^.*href=\"(.*\.xlsx)?.*$",
@@ -190,7 +201,9 @@ def load_localities(political_districts):
                 stop=3,
             ),
         )
-        .assign(postal_code=lambda row: row["postal_code"].str.split(pat=" ", expand=False))
+        .assign(
+            postal_code=lambda row: row["postal_code"].str.split(pat=" ", expand=False)
+        )
         .explode(column=["postal_code"])
         .filter(items=["political_district_code", "postal_code"])
         .drop_duplicates(subset=None, keep="first", ignore_index=True)
@@ -200,17 +213,24 @@ def load_localities(political_districts):
             on=["political_district_code"],
             indicator=False,
         )
-        .filter(items=["state", "political_district_code", "political_district", "postal_code"])
+        .filter(
+            items=[
+                "state",
+                "political_district_code",
+                "political_district",
+                "postal_code",
+            ]
+        )
         .sort_values(by=["political_district_code", "postal_code"], ignore_index=True)
     )
 
 
-def download_shapefile(target_dir=SHAPEFILE_DATA_DIR):
+def download_shapefile(target_dir=SHAPEFILE_DATA_DIR, url=SHAPEFILE_ZIP_URL):
     """Download and extract the Statistik Austria municipality shapefile."""
     with ZipFile(
         file=BytesIO(
             initial_bytes=requests.get(
-                url=SHAPEFILE_ZIP_URL,
+                url=url,
                 headers=None,
                 timeout=5,
                 verify=True,
@@ -223,12 +243,17 @@ def download_shapefile(target_dir=SHAPEFILE_DATA_DIR):
         safe_extract(zip_file=zip_file, target_dir=target_dir)
 
 
-def load_shapefile(municipalities, postal_codes, shapefile_dir=SHAPEFILE_DATA_DIR):
+def load_shapefile(
+    municipalities,
+    postal_codes,
+    shapefile_dir=SHAPEFILE_DATA_DIR,
+    shapefile_layer=SHAPEFILE_LAYER,
+):
     """Load the extracted shapefile and join municipality and postal code data."""
     return (
         gpd.read_file(
-            filename=shapefile_dir / f"{SHAPEFILE_LAYER}.shp",
-            layer=SHAPEFILE_LAYER,
+            filename=shapefile_dir / f"{shapefile_layer}.shp",
+            layer=shapefile_layer,
             include_fields=["g_id", "g_name", "geometry"],
             driver=None,
             encoding="utf-8",
@@ -281,25 +306,84 @@ def plot_shapefile_levels(at_shapefile):
     pyplot.show()
 
 
-def main():
-    """Build and plot Austrian shapefile data."""
+def export_shapefile(at_shapefile, export_path, export_format=None):
+    """Export the generated GeoDataFrame to the selected file format."""
+    export_path = Path(export_path)
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+    export_format = (export_format or export_path.suffix.lstrip(".")).lower()
+
+    if export_format in {"geojson", "json"}:
+        at_shapefile.to_file(export_path, driver="GeoJSON")
+    elif export_format in {"gpkg", "geopackage"}:
+        at_shapefile.to_file(export_path, driver="GPKG")
+    elif export_format in {"shp", "shapefile"}:
+        at_shapefile.to_file(export_path, driver="ESRI Shapefile")
+    elif export_format == "csv":
+        at_shapefile.drop(columns="geometry").to_csv(export_path, index=False)
+    else:
+        raise ValueError(f"Unsupported export format: {export_format}")
+
+
+def build_at_shapefile(
+    shapefile_url=SHAPEFILE_ZIP_URL,
+    shapefile_layer=SHAPEFILE_LAYER,
+    shapefile_dir=SHAPEFILE_DATA_DIR,
+    export_path=None,
+    export_format=None,
+    plot=False,
+    log_callback=None,
+):
+    """Build Austrian postal-code areas and optionally export or plot the result."""
+
+    def log(message):
+        if log_callback is not None:
+            log_callback(message)
+
+    log("Loading postal codes...")
     postal_codes = load_postal_codes()
+    log("Loading municipalities...")
     municipalities = load_municipalities()
+    log("Loading political districts...")
     political_districts = load_political_districts()
+    log("Loading localities...")
     localities = load_localities(political_districts)
 
-    # Keep the duplicate-postal-code check available without executing it at import time.
     duplicate_localities = localities.loc[
         localities.duplicated(subset=["postal_code"], keep=False)
     ].sort_values(by=["postal_code"], ignore_index=True)
-    print(duplicate_localities)
+    if not duplicate_localities.empty:
+        log(f"Found {len(duplicate_localities)} duplicate locality postal-code rows.")
 
-    download_shapefile()
+    log("Downloading and extracting municipality geometries...")
+    download_shapefile(target_dir=shapefile_dir, url=shapefile_url)
+    log("Building joined shapefile data...")
     at_shapefile = load_shapefile(
         municipalities=municipalities,
         postal_codes=postal_codes,
+        shapefile_dir=shapefile_dir,
+        shapefile_layer=shapefile_layer,
     )
-    plot_shapefile_levels(at_shapefile)
+
+    if export_path:
+        export_label = export_format or Path(export_path).suffix.lstrip(".")
+        log(f"Exporting {export_label} to {export_path}...")
+        export_shapefile(
+            at_shapefile=at_shapefile,
+            export_path=export_path,
+            export_format=export_format,
+        )
+        log("Export completed successfully.")
+
+    if plot:
+        log("Plotting shapefile levels...")
+        plot_shapefile_levels(at_shapefile)
+
+    return at_shapefile
+
+
+def main():
+    """Build and plot Austrian shapefile data."""
+    build_at_shapefile(plot=True, log_callback=print)
 
 
 if __name__ == "__main__":
