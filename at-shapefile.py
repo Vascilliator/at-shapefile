@@ -14,8 +14,8 @@ globals().clear()
 
 
 # Import packages
-import os
 from io import BytesIO
+from pathlib import Path
 import re
 from zipfile import ZipFile, ZIP_DEFLATED
 
@@ -23,6 +23,10 @@ import geopandas as gpd
 from matplotlib import pyplot
 import pandas as pd
 import requests
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+SHAPEFILE_DATA_DIR = PROJECT_ROOT / 'data' / 'raw' / 'OGDEXT_GEM_1_STATISTIK_AUSTRIA_20230101'
 
 
 ##############
@@ -239,7 +243,8 @@ with ZipFile(
     mode='r',
     compression=ZIP_DEFLATED,
 ) as zip_file:
-    zip_file.extractall(path=os.path.join(os.path.expanduser('~'), 'Downloads', 'OGDEXT_GEM_1_STATISTIK_AUSTRIA_20230101'))
+    SHAPEFILE_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    zip_file.extractall(path=SHAPEFILE_DATA_DIR)
 
 # Delete objects
 del zip_file, ZIP_DEFLATED
@@ -248,7 +253,7 @@ del zip_file, ZIP_DEFLATED
 # Import
 at_shapefile = (
     gpd.read_file(
-        filename=os.path.join(os.path.expanduser('~'), 'Downloads', 'OGDEXT_GEM_1_STATISTIK_AUSTRIA_20230101', 'STATISTIK_AUSTRIA_GEM_20230101.shp'),
+        filename=SHAPEFILE_DATA_DIR / 'STATISTIK_AUSTRIA_GEM_20230101.shp',
         layer='STATISTIK_AUSTRIA_GEM_20230101',
         include_fields=['g_id', 'g_name', 'geometry'],
         driver=None,
