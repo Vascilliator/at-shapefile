@@ -318,9 +318,8 @@ def load_shapefile(
 
 def build_postal_code_geometries(at_shapefile):
     """Build postal-code-level geometries from the joined Austrian shapefile."""
-    return (
-        at_shapefile.filter(items=["postal_code", "geometry"])
-        .dissolve(by="postal_code", as_index=False, sort=True, dropna=True)
+    return at_shapefile.filter(items=["postal_code", "geometry"]).dissolve(
+        by="postal_code", as_index=False, sort=True, dropna=True
     )
 
 
@@ -378,6 +377,128 @@ def simplify_geometries(geo_data, tolerance, preserve_topology=True):
     return working_data
 
 
+def validate_simplified_geometries(
+    original,
+    simplified,
+    log_callback=None,
+    area_warning_threshold=0.05,
+):
+    """Validate simplified postal-code geometries against their originals.
+
+    Critical geometry losses such as empty geometries raise an exception.
+    Non-critical quality issues are reported via ``log_callback`` and included
+    in the returned validation report so callers can decide how strict they
+    want to be.
+    """
+
+    def log(message):
+        if log_callback is not None:
+            log_callback(message)
+
+    validation_report = {
+        "original_feature_count": len(original),
+        "simplified_feature_count": len(simplified),
+        "warnings": [],
+        "area_deviations": None,
+    }
+
+    def warn(message):
+        validation_report["warnings"].append(message)
+        log(f"Warnung: {message}")
+
+    if len(original) != len(simplified):
+        warn(
+            "Anzahl der PLZ-Features hat sich geändert: "
+            f"{len(original)} original, {len(simplified)} vereinfacht."
+        )
+
+    missing_original_geometries = original.geometry.isna()
+    if missing_original_geometries.any():
+        warn(
+            "Originaldaten enthalten "
+            f"{int(missing_original_geometries.sum())} fehlende Geometrien."
+        )
+
+    missing_simplified_geometries = simplified.geometry.isna()
+    empty_simplified_geometries = (
+        ~missing_simplified_geometries & simplified.geometry.is_empty
+    )
+    broken_simplified_geometries = (
+        missing_simplified_geometries | empty_simplified_geometries
+    )
+    if broken_simplified_geometries.any():
+        broken_labels = simplified.loc[
+            broken_simplified_geometries, "postal_code"
+        ].astype(str)
+        raise ValueError(
+            "Vereinfachung hat leere oder fehlende Geometrien erzeugt "
+            f"für PLZ: {', '.join(broken_labels)}"
+        )
+
+    invalid_simplified_geometries = (
+        ~missing_simplified_geometries & ~simplified.geometry.is_valid
+    )
+    if invalid_simplified_geometries.any():
+        invalid_labels = simplified.loc[
+            invalid_simplified_geometries, "postal_code"
+        ].astype(str)
+        warn(
+            "Vereinfachung hat ungültige Geometrien erzeugt für PLZ: "
+            f"{', '.join(invalid_labels)}"
+        )
+
+    if "postal_code" in original.columns and "postal_code" in simplified.columns:
+        original_postal_codes = set(original["postal_code"].dropna().astype(str))
+        simplified_postal_codes = set(simplified["postal_code"].dropna().astype(str))
+        if original_postal_codes != simplified_postal_codes:
+            missing_postal_codes = sorted(
+                original_postal_codes - simplified_postal_codes
+            )
+            added_postal_codes = sorted(simplified_postal_codes - original_postal_codes)
+            warn(
+                "PLZ-Werte stimmen nicht überein. "
+                f"Fehlend: {missing_postal_codes or 'keine'}; "
+                f"Zusätzlich: {added_postal_codes or 'keine'}."
+            )
+
+    if (
+        "postal_code" in original.columns
+        and "postal_code" in simplified.columns
+        and original.crs is not None
+        and simplified.crs is not None
+        and not original.crs.is_geographic
+        and not simplified.crs.is_geographic
+    ):
+        original_area = original.set_index("postal_code").geometry.area
+        simplified_area = simplified.set_index("postal_code").geometry.area
+        area_deviation = (
+            (simplified_area - original_area)
+            .abs()
+            .div(original_area.replace(0, pd.NA))
+            .dropna()
+        )
+        validation_report["area_deviations"] = area_deviation.to_dict()
+
+        high_deviation = area_deviation[area_deviation > area_warning_threshold]
+        if not high_deviation.empty:
+            warn(
+                "Flächenabweichung überschreitet "
+                f"{area_warning_threshold:.1%} für PLZ: "
+                + ", ".join(
+                    f"{postal_code} ({deviation:.1%})"
+                    for postal_code, deviation in high_deviation.items()
+                )
+            )
+    else:
+        warn(
+            "Flächenabweichung wurde nicht berechnet, da beide GeoDataFrames "
+            "ein metrisches CRS benötigen."
+        )
+
+    log("Validierung der vereinfachten Geometrien abgeschlossen.")
+    return validation_report
+
+
 def _geojson_supports_coordinate_precision():
     """Return whether GDAL advertises GeoJSON coordinate precision support."""
     try:
@@ -396,9 +517,7 @@ def _geojson_supports_coordinate_precision():
 def _round_coordinate_values(value, coordinate_precision):
     """Recursively round numeric values inside a GeoJSON coordinates array."""
     if isinstance(value, list):
-        return [
-            _round_coordinate_values(item, coordinate_precision) for item in value
-        ]
+        return [_round_coordinate_values(item, coordinate_precision) for item in value]
 
     if isinstance(value, float):
         return round(value, coordinate_precision)
@@ -476,6 +595,7 @@ def export_postal_code_geometries(
     simplified_export_path=None,
     preserve_topology=True,
     coordinate_precision=None,
+    log_callback=None,
 ):
     """Export postal-code geometries as GeoJSON or CSV with WKT geometry.
 
@@ -514,11 +634,17 @@ def export_postal_code_geometries(
             tolerance=simplify_tolerance,
             preserve_topology=preserve_topology,
         )
+        validate_simplified_geometries(
+            original=postal_code_geometries,
+            simplified=simplified_data,
+            log_callback=log_callback,
+        )
         export_postal_code_geometries(
             postal_code_geometries=simplified_data,
             output_path=simplified_path,
             output_format=simplified_format,
             coordinate_precision=coordinate_precision,
+            log_callback=log_callback,
         )
 
 
@@ -590,6 +716,7 @@ def build_and_export_postal_code_geometries(
     coordinate_precision=None,
 ):
     """Build postal-code geometries and export them for UI/CLI callers."""
+
     def log(message):
         if log_callback is not None:
             log_callback(message)
@@ -627,6 +754,7 @@ def build_and_export_postal_code_geometries(
         simplified_export_path=simplified_export_path,
         preserve_topology=preserve_topology,
         coordinate_precision=coordinate_precision,
+        log_callback=log_callback,
     )
     log("Export abgeschlossen.")
     return postal_code_geometries
