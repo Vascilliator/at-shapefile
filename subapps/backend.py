@@ -632,16 +632,29 @@ def build_and_export_postal_code_geometries(
     return postal_code_geometries
 
 
-def main():
+def main(
+    export_path=None,
+    export_format=None,
+    simplified_export_path=None,
+    simplify_tolerance=None,
+    coordinate_precision=None,
+):
     """CLI/demo entry point for building and exporting Austrian PLZ areas."""
     build_and_export_postal_code_geometries(
         shapefile_url=SHAPEFILE_ZIP_URL,
         shapefile_layer=SHAPEFILE_LAYER,
         shapefile_dir=get_shapefile_data_dir(SHAPEFILE_ZIP_URL),
-        export_path=PROJECT_ROOT / "data" / "processed" / "at-postal-codes.geojson",
-        export_format="geojson",
+        export_path=(
+            export_path
+            if export_path is not None
+            else PROJECT_ROOT / "data" / "processed" / "at-postal-codes.geojson"
+        ),
+        export_format=export_format if export_format is not None else "geojson",
         plot=False,
         log_callback=print,
+        simplify_tolerance=simplify_tolerance,
+        simplified_export_path=simplified_export_path,
+        coordinate_precision=coordinate_precision,
     )
 
 
